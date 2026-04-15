@@ -1,0 +1,53 @@
+{
+  "cli": {
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "http://127.0.0.1:54321",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REPLACE_WITH_LOCAL_ANON_KEY",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "REPLACE_WITH_RC_ANDROID_KEY",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "REPLACE_WITH_RC_IOS_KEY",
+        "EXPO_PUBLIC_SENTRY_DSN": "REPLACE_WITH_SENTRY_DSN",
+        "EXPO_PUBLIC_POSTHOG_KEY": "REPLACE_WITH_POSTHOG_KEY"
+      }
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "REPLACE_WITH_STAGING_SUPABASE_URL",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REPLACE_WITH_STAGING_ANON_KEY",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "REPLACE_WITH_RC_ANDROID_KEY",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "REPLACE_WITH_RC_IOS_KEY",
+        "EXPO_PUBLIC_SENTRY_DSN": "REPLACE_WITH_SENTRY_DSN",
+        "EXPO_PUBLIC_POSTHOG_KEY": "REPLACE_WITH_POSTHOG_KEY",
+        "SENTRY_AUTH_TOKEN": "$SENTRY_AUTH_TOKEN"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "REPLACE_WITH_PRODUCTION_SUPABASE_URL",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REPLACE_WITH_PRODUCTION_ANON_KEY",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "REPLACE_WITH_RC_ANDROID_KEY",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "REPLACE_WITH_RC_IOS_KEY",
+        "EXPO_PUBLIC_SENTRY_DSN": "REPLACE_WITH_SENTRY_DSN",
+        "EXPO_PUBLIC_POSTHOG_KEY": "REPLACE_WITH_POSTHOG_KEY",
+        "SENTRY_AUTH_TOKEN": "$SENTRY_AUTH_TOKEN"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
