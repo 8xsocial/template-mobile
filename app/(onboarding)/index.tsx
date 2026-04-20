@@ -21,6 +21,8 @@ import { supabase } from '@/lib/supabase'
 import { track } from '@/lib/analytics'
 import { ACCENT, ACCENT_DIM, ACCENT_BORDER, BG, SURFACE, BORDER } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
+import { adjustBrightness } from '@/lib/utils'
+import { Fonts } from '@/lib/typography'
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets()
@@ -48,14 +50,16 @@ export default function OnboardingScreen() {
       return
     }
 
-    // Also upsert the profiles table
+    // Also upsert the profiles table (best-effort, non-blocking)
     if (name?.trim()) {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await supabase
-          .from('profiles')
-          .upsert({ id: user.id, display_name: name.trim() })
-      }
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await supabase
+            .from('profiles')
+            .upsert({ id: user.id, display_name: name.trim() })
+        }
+      } catch { /* profile upsert failure is non-fatal; metadata already saved above */ }
     }
 
     track('onboarding_completed', { skipped: !name?.trim() })
@@ -137,13 +141,7 @@ export default function OnboardingScreen() {
   )
 }
 
-function adjustBrightness(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.max(0, Math.min(255, (num >> 16) + amount))
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amount))
-  const b = Math.max(0, Math.min(255, (num & 0xff) + amount))
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
-}
+// adjustBrightness imported from @/lib/utils
 
 const s = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 24 },
@@ -162,6 +160,7 @@ const s = StyleSheet.create({
     height: 52, backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1, borderColor: BORDER, borderRadius: 14,
     paddingHorizontal: 18, color: '#fff', fontSize: 16,
+    fontFamily: Fonts.regular,
   },
   errorBox: {
     backgroundColor: 'rgba(248,113,113,0.08)', borderRadius: 8,

@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourcompany.myapp"
+      "bundleIdentifier": "com.yourcompany.myapp",
+      "associatedDomains": [
+        "applinks:REPLACE_WITH_YOUR_DOMAIN"
+      ]
     },
     "android": {
       "package": "com.yourcompany.myapp",
@@ -32,7 +35,17 @@
         "backgroundColor": "#0d0d0d",
         "translucent": true
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "myapp" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"

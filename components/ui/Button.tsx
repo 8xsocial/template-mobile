@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, ActivityIndicator, type PressableProps, type Vie
 import { Text } from './Text'
 import { ACCENT, ACCENT_DIM, ACCENT_BORDER, BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
+import { adjustBrightness } from '@/lib/utils'
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive'
 type ButtonSize    = 'sm' | 'md' | 'lg'
@@ -101,13 +102,4 @@ export function Button({
       )}
     </Pressable>
   )
-}
-
-/** Darken a hex color by a given amount (0–255). Very simple utility. */
-function adjustBrightness(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r   = Math.max(0, Math.min(255, (num >> 16) + amount))
-  const g   = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amount))
-  const b   = Math.max(0, Math.min(255, (num & 0xff) + amount))
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
 }

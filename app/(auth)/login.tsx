@@ -13,19 +13,30 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  View, Pressable, StyleSheet,
+  View, Pressable, StyleSheet, Dimensions,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  TextInput as RNTextInput, ScrollView,
+  TextInput as RNTextInput, ScrollView, DeviceEventEmitter,
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 import { router } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import { Text } from '@/components/ui/Text'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { track } from '@/lib/analytics'
-import { ACCENT, ACCENT_DIM, ACCENT_BORDER, BG, SURFACE, BORDER, ERROR, ERROR_DIM } from '@/lib/theme'
+import { ACCENT, ACCENT_DIM, ACCENT_BORDER, BG, SURFACE, BORDER, ERROR, ERROR_DIM, TEXT_SECONDARY } from '@/lib/theme'
+import { APP_NAME, APP_SCHEME } from '@/lib/constants'
+import { adjustBrightness } from '@/lib/utils'
+import { Fonts } from '@/lib/typography'
+
+// Required for OAuth session handling on Android
+WebBrowser.maybeCompleteAuthSession()
+
+// ─── Set to true during development to show a "Skip to Home" button ───────────
+// Set to false before shipping to production.
+const DEV_ALLOW_SKIP = __DEV__
 
 // ─── Disposable email blocklist ───────────────────────────────────────────────
 // Prevents throwaway emails from creating accounts.
@@ -39,31 +50,31 @@ const DISPOSABLE_DOMAINS = new Set([
 
 function normalizeEmail(raw: string): string {
   const trimmed = raw.trim().toLowerCase()
-  const atIdx   = trimmed.lastIndexOf('@')
+  const atIdx = trimmed.lastIndexOf('@')
   if (atIdx === -1) return trimmed
-  const local  = trimmed.slice(0, atIdx)
+  const local = trimmed.slice(0, atIdx)
   const domain = trimmed.slice(atIdx + 1)
   const cleanLocal = local.split('+')[0]
   // Remove dots for Gmail addresses
   const gmailDomains = ['gmail.com', 'googlemail.com']
-  const finalLocal   = gmailDomains.includes(domain) ? cleanLocal.replace(/\./g, '') : cleanLocal
+  const finalLocal = gmailDomains.includes(domain) ? cleanLocal.replace(/\./g, '') : cleanLocal
   return `${finalLocal}@${domain}`
 }
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets()
 
-  const [step, setStep]   = useState<'email' | 'otp'>('email')
+  const [step, setStep] = useState<'email' | 'otp'>('email')
   const [email, setEmail] = useState('')
-  const [otp,   setOtp]   = useState(['', '', '', '', '', ''])
-  const [loading, setLoading]       = useState(false)
-  const [error,   setError]         = useState<string | null>(null)
-  const [cooldown, setCooldown]     = useState(0)
+  const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [cooldown, setCooldown] = useState(0)
   const [failedAttempts, setFailedAttempts] = useState(0)
-  const [lockoutEnd,  setLockoutEnd]  = useState<number | null>(null)
+  const [lockoutEnd, setLockoutEnd] = useState<number | null>(null)
   const [lockoutLeft, setLockoutLeft] = useState(0)
 
-  const otpRefs  = useRef<(RNTextInput | null)[]>([])
+  const otpRefs = useRef<(RNTextInput | null)[]>([])
   const emailRef = useRef<RNTextInput>(null)
 
   // Resend cooldown countdown
@@ -118,7 +129,7 @@ export default function LoginScreen() {
     const { error: err } = await supabase.auth.verifyOtp({
       email: normalizeEmail(email),
       token: code,
-      type:  'email',
+      type: 'email',
     })
     setLoading(false)
     if (err) {
@@ -140,7 +151,7 @@ export default function LoginScreen() {
 
   const handleOtpChange = (val: string, index: number) => {
     const digit = val.replace(/\D/g, '').slice(-1)
-    const next  = [...otp]
+    const next = [...otp]
     next[index] = digit
     setOtp(next)
     if (digit && index < 5) otpRefs.current[index + 1]?.focus()
@@ -150,7 +161,7 @@ export default function LoginScreen() {
 
   const handleOtpKeyPress = (e: any, index: number) => {
     if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      const next  = [...otp]
+      const next = [...otp]
       next[index - 1] = ''
       setOtp(next)
       otpRefs.current[index - 1]?.focus()
@@ -174,21 +185,42 @@ export default function LoginScreen() {
     setTimeout(() => emailRef.current?.focus(), 150)
   }
 
-  // ─── Placeholder social login handlers ──────────────────────────────────────
-  // TODO: Wire these up by configuring OAuth providers in Supabase.
-  // See the file header comment for setup instructions.
-
-  const handleGoogleLogin = () => {
-    // TODO: implement Google OAuth
-    // supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: 'myapp://auth/callback' } })
-    console.log('[Auth] Google OAuth not yet wired up')
+  // ─── Dev skip — bypasses auth for testing UI flow ─────────────────────────────
+  const handleDevSkip = () => {
+    DeviceEventEmitter.emit('__dev_skip_auth__')
   }
 
-  const handleAppleLogin = () => {
-    // TODO: implement Apple Sign-In
-    // supabase.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: 'myapp://auth/callback' } })
-    console.log('[Auth] Apple Sign-In not yet wired up')
+  // ─── Social login handlers ───────────────────────────────────────────────────
+  // Requires: Supabase → Auth → Providers → Google/Apple enabled
+  // Requires: app.json scheme = 'myapp' (already set) so deep link works
+
+  async function handleOAuthLogin(provider: 'google' | 'apple') {
+    setLoading(true)
+    setError(null)
+    try {
+      const redirectTo = `${APP_SCHEME}://auth/callback`
+      const { data, error: err } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo, skipBrowserRedirect: true },
+      })
+      if (err) throw err
+      if (!data.url) throw new Error('No OAuth URL returned.')
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
+      if (result.type === 'success') {
+        const { error: sessionErr } = await supabase.auth.exchangeCodeForSession(result.url)
+        if (sessionErr) throw sessionErr
+        // _layout.tsx auth guard handles navigation automatically
+      }
+    } catch (e: any) {
+      setError(e?.message ?? `${provider === 'google' ? 'Google' : 'Apple'} sign-in failed.`)
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const handleGoogleLogin = () => handleOAuthLogin('google')
+  const handleAppleLogin  = () => handleOAuthLogin('apple')
 
   return (
     <View style={s.root}>
@@ -202,40 +234,40 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
-          contentContainerStyle={[s.form, { paddingBottom: insets.bottom + 32 }]}
+          contentContainerStyle={[s.form, { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 32 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeInDown.delay(80).duration(400)}>
-            {/* App name */}
-            <Text style={s.appName}>
-              {/* 🎨 BRAND: Replace with your app name */}
-              MyApp
-            </Text>
+          <Animated.View entering={FadeInDown.delay(80).duration(400)} style={s.content}>
+            {/* App badge */}
+            <View style={s.appBadge}>
+              <View style={s.appBadgeDot} />
+              <Text style={s.appBadgeText}>{APP_NAME}</Text>
+            </View>
 
             {/* Heading */}
             {step === 'email' ? (
               <View style={s.titleBlock}>
-                <Text style={s.titleBold}>Sign in</Text>
+                <Text style={s.titleBold}>Welcome back</Text>
                 <Text style={s.sub}>Enter your email — we'll send a one-time code.</Text>
               </View>
             ) : (
               <View style={s.titleBlock}>
                 <Text style={s.titleBold}>Check your inbox</Text>
-                <View style={[s.emailPill, { backgroundColor: ACCENT_DIM, borderColor: ACCENT_BORDER }]}>
-                  <Text style={[s.emailPillText, { color: ACCENT }]} numberOfLines={1}>
+                <View style={s.emailPill}>
+                  <Text style={s.emailPillText} numberOfLines={1}>
                     {normalizeEmail(email)}
                   </Text>
                 </View>
-                <Text style={s.sub}>Enter the 6-digit code. Check spam if needed.</Text>
+                <Text style={s.sub}>Enter the 6-digit code we sent. Check spam if needed.</Text>
               </View>
             )}
 
             {/* ── Email step ── */}
             {step === 'email' && (
-              <>
+              <View style={s.stepWrap}>
                 <View style={s.fieldGroup}>
-                  <Text style={s.label}>EMAIL</Text>
+                  <Text style={s.label}>EMAIL ADDRESS</Text>
                   <RNTextInput
                     ref={emailRef}
                     value={email}
@@ -257,7 +289,10 @@ export default function LoginScreen() {
                 <Pressable
                   onPress={handleSendOtp}
                   disabled={loading || !email.trim()}
-                  style={({ pressed }) => ({ opacity: (loading || !email.trim()) ? 0.4 : pressed ? 0.85 : 1, borderRadius: 12, overflow: 'hidden', marginTop: 4 })}
+                  style={({ pressed }) => ({
+                    opacity: (loading || !email.trim()) ? 0.4 : pressed ? 0.85 : 1,
+                    borderRadius: 14, overflow: 'hidden',
+                  })}
                 >
                   <LinearGradient
                     colors={[ACCENT, adjustBrightness(ACCENT, -25)]}
@@ -266,43 +301,45 @@ export default function LoginScreen() {
                   >
                     {loading
                       ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={s.btnText}>Continue  →</Text>
+                      : <Text style={s.btnText}>Continue</Text>
                     }
                   </LinearGradient>
                 </Pressable>
 
-                {/* ─── Social login placeholder buttons ────────────────────── */}
+                {/* ─── Social logins ────────────────────── */}
                 <View style={s.dividerRow}>
                   <View style={s.dividerLine} />
                   <Text style={s.dividerText}>or continue with</Text>
                   <View style={s.dividerLine} />
                 </View>
 
-                {/* Google — TODO: wire up OAuth */}
-                <Pressable
-                  onPress={handleGoogleLogin}
-                  style={({ pressed }) => [s.socialBtn, pressed && { opacity: 0.75 }]}
-                >
-                  <View style={s.socialIcon}>
-                    <Text style={{ fontSize: 16 }}>G</Text>
-                  </View>
-                  <Text style={s.socialBtnText}>Sign in with Google</Text>
-                </Pressable>
+                <View style={s.socialRow}>
+                  {/* Google */}
+                  <Pressable
+                    onPress={handleGoogleLogin}
+                    style={({ pressed }) => [s.socialBtn, pressed && { opacity: 0.75 }]}
+                  >
+                    <View style={s.socialIcon}>
+                      <Text style={{ fontSize: 15, fontWeight: '700' }}>G</Text>
+                    </View>
+                    <Text style={s.socialBtnText}>Google</Text>
+                  </Pressable>
 
-                {/* Apple — TODO: wire up OAuth (iOS only — hide on Android if preferred) */}
-                <Pressable
-                  onPress={handleAppleLogin}
-                  style={({ pressed }) => [s.socialBtn, pressed && { opacity: 0.75 }]}
-                >
-                  <Ionicons name="logo-apple" size={18} color="#fff" style={{ marginRight: 2 }} />
-                  <Text style={s.socialBtnText}>Sign in with Apple</Text>
-                </Pressable>
-              </>
+                  {/* Apple */}
+                  <Pressable
+                    onPress={handleAppleLogin}
+                    style={({ pressed }) => [s.socialBtn, pressed && { opacity: 0.75 }]}
+                  >
+                    <Ionicons name="logo-apple" size={17} color="#fff" />
+                    <Text style={s.socialBtnText}>Apple</Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
 
             {/* ── OTP step ── */}
             {step === 'otp' && (
-              <>
+              <View style={s.stepWrap}>
                 <View style={s.otpRow}>
                   {otp.map((digit, i) => (
                     <RNTextInput
@@ -336,7 +373,7 @@ export default function LoginScreen() {
                   disabled={loading || otp.includes('') || !!lockoutEnd}
                   style={({ pressed }) => ({
                     opacity: (loading || otp.includes('') || !!lockoutEnd) ? 0.4 : pressed ? 0.85 : 1,
-                    borderRadius: 12, overflow: 'hidden', marginTop: 4,
+                    borderRadius: 14, overflow: 'hidden',
                   })}
                 >
                   <LinearGradient
@@ -362,7 +399,18 @@ export default function LoginScreen() {
                     <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Change email</Text>
                   </Pressable>
                 </View>
-              </>
+              </View>
+            )}
+
+            {/* ─── Dev skip button (only visible in __DEV__) ─────────────────── */}
+            {DEV_ALLOW_SKIP && (
+              <Pressable
+                onPress={handleDevSkip}
+                style={({ pressed }) => [s.devSkipBtn, pressed && { opacity: 0.6 }]}
+              >
+                <Ionicons name="play-skip-forward-outline" size={14} color={TEXT_SECONDARY} />
+                <Text style={s.devSkipText}>Skip to Home (dev only)</Text>
+              </Pressable>
             )}
 
             {/* Legal */}
@@ -390,86 +438,120 @@ function ErrorBanner({ msg }: { msg: string }) {
   )
 }
 
-function adjustBrightness(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r   = Math.max(0, Math.min(255, (num >> 16) + amount))
-  const g   = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amount))
-  const b   = Math.max(0, Math.min(255, (num & 0xff) + amount))
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
-}
-
-const { width: SW } = require('react-native').Dimensions.get('window')
+const { width: SW } = Dimensions.get('window')
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   backBtn: { position: 'absolute', left: 16, zIndex: 20 },
-  kav:     { flex: 1 },
-  form:    { paddingHorizontal: 24, paddingTop: 88, gap: 16 },
+  kav: { flex: 1 },
+  form: { flexGrow: 1, paddingHorizontal: 24 },
+  content: { flex: 1, gap: 0 },
 
-  appName: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.35)', marginBottom: 20, letterSpacing: -0.2 },
+  // App badge
+  appBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    marginBottom: 28,
+  },
+  appBadgeDot: {
+    width: 6, height: 6, borderRadius: 999, backgroundColor: ACCENT,
+  },
+  appBadgeText: {
+    fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)', letterSpacing: 0.2,
+  },
 
-  titleBlock:  { gap: 8, marginBottom: 4 },
-  titleBold:   { fontSize: 36, fontWeight: '800', color: '#fff', letterSpacing: -1, lineHeight: 40 },
-  sub:         { fontSize: 14, color: 'rgba(255,255,255,0.38)', lineHeight: 20 },
+  // Title
+  titleBlock: { gap: 10, marginBottom: 28 },
+  titleBold: { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.8, lineHeight: 36 },
+  sub: { fontSize: 14, color: 'rgba(255,255,255,0.40)', lineHeight: 20 },
 
   emailPill: {
-    alignSelf: 'flex-start', borderWidth: 1, borderRadius: 6,
-    paddingHorizontal: 10, paddingVertical: 4,
+    alignSelf: 'flex-start', borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: ACCENT_DIM, borderColor: ACCENT_BORDER,
   },
-  emailPillText: { fontSize: 13, fontWeight: '500' },
+  emailPillText: { fontSize: 13, fontWeight: '500', color: ACCENT },
 
-  fieldGroup: { gap: 7 },
-  label: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' },
+  // Steps wrapper
+  stepWrap: { gap: 16 },
+
+  // Fields
+  fieldGroup: { gap: 8 },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.30)' },
   input: {
-    height: 50, backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    height: 52, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: BORDER, borderRadius: 14,
     paddingHorizontal: 16, color: '#fff', fontSize: 16,
+    fontFamily: Fonts.regular,
   },
   inputErr: { borderColor: `${ERROR}66` },
 
-  btn:     { height: 50, alignItems: 'center', justifyContent: 'center' },
+  // Buttons
+  btn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   // Social buttons
-  dividerRow:  { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 4 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: BORDER },
-  dividerText: { color: 'rgba(255,255,255,0.28)', fontSize: 12 },
+  dividerText: { color: 'rgba(255,255,255,0.25)', fontSize: 12 },
+  socialRow: { flexDirection: 'row', gap: 12 },
   socialBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    height: 48, backgroundColor: SURFACE, borderRadius: 12,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 50, backgroundColor: SURFACE, borderRadius: 14,
     borderWidth: 1, borderColor: BORDER,
   },
   socialIcon: {
-    width: 22, height: 22, borderRadius: 4, backgroundColor: '#fff',
+    width: 22, height: 22, borderRadius: 5, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
   },
-  socialBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  socialBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
   // Error
-  errorBox: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
+  errorBox: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
 
   // Lockout
   lockoutBox: {
-    backgroundColor: 'rgba(251,191,36,0.08)', borderRadius: 8,
+    backgroundColor: 'rgba(251,191,36,0.08)', borderRadius: 10,
     borderWidth: 1, borderColor: 'rgba(251,191,36,0.2)',
-    paddingHorizontal: 12, paddingVertical: 9, alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center',
   },
   lockoutText: { color: '#fbbf24', fontSize: 13, fontWeight: '600' },
 
   // OTP
-  otpRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  otpRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   otpBox: {
-    width: Math.floor((SW - 48 - 5 * 8) / 6),
-    height: 52, backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1, borderColor: BORDER, borderRadius: 10,
-    color: '#fff', fontSize: 20, textAlign: 'center',
+    flex: 1,
+    height: 56, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    color: '#fff', fontSize: 22, textAlign: 'center',
     textAlignVertical: 'center', paddingVertical: 0, paddingHorizontal: 0,
     includeFontPadding: false,
+    fontFamily: Fonts.regular,
   },
   otpBoxOn: { color: ACCENT },
-  otpMeta:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  otpMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   resendText: { color: ACCENT, fontSize: 13, fontWeight: '500' },
 
-  legalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 },
+  // Dev skip
+  devSkipBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    alignSelf: 'center',
+    marginTop: 20,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed',
+    borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  devSkipText: { fontSize: 12, color: TEXT_SECONDARY, fontWeight: '500' },
+
+  // Legal
+  legalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 'auto', paddingTop: 24 },
   legalLink: { fontSize: 11, color: 'rgba(255,255,255,0.3)', textDecorationLine: 'underline' },
 })

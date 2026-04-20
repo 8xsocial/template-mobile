@@ -1,172 +1,382 @@
-/**
- * Public landing screen (shown to unauthenticated users).
- * Replace this with your app's actual landing / onboarding intro.
- */
 import { useEffect } from 'react'
 import { View, Pressable, StyleSheet, Dimensions } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withDelay,
-  withRepeat,
-  withSequence,
-  Easing,
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
+    withDelay,
+    withRepeat,
+    withSequence,
+    Easing,
 } from 'react-native-reanimated'
-import { Text } from '@/components/ui/Text'
-import { ACCENT, ACCENT_DIM, BG } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Ionicons } from '@expo/vector-icons'
+import { Text } from '@/components/ui/Text'
+import { ACCENT, ACCENT_DIM, BG, BORDER } from '@/lib/theme'
+import { APP_NAME, APP_TAGLINE, APP_DESCRIPTION } from '@/lib/constants'
+import { adjustBrightness } from '@/lib/utils'
 
 const { width: SW, height: SH } = Dimensions.get('window')
 
+// ─── Feature items shown on the landing page ──────────────────────────────────
+// Update these to match your app's value props.
+const FEATURES = [
+    { icon: 'shield-checkmark-outline' as const, title: 'Secure by Default', desc: 'End-to-end encrypted auth' },
+    { icon: 'flash-outline' as const, title: 'Blazing Fast', desc: 'Optimized for performance' },
+    { icon: 'cloud-done-outline' as const, title: 'Always in Sync', desc: 'Real-time data across devices' },
+]
+
 export default function LandingScreen() {
-  const insets = useSafeAreaInsets()
+    const insets = useSafeAreaInsets()
 
-  // Entrance animations
-  const logoScale    = useSharedValue(0.7)
-  const logoOpacity  = useSharedValue(0)
-  const titleY       = useSharedValue(24)
-  const titleOpacity = useSharedValue(0)
-  const taglineOpacity = useSharedValue(0)
-  const btnOpacity   = useSharedValue(0)
+    // ── Animations ──
+    const headerY = useSharedValue(-20)
+    const headerOpacity = useSharedValue(0)
+    const heroScale = useSharedValue(0.88)
+    const heroOpacity = useSharedValue(0)
+    const featuresY = useSharedValue(30)
+    const featuresOpacity = useSharedValue(0)
+    const footerOpacity = useSharedValue(0)
+    const orbOneY = useSharedValue(0)
+    const orbTwoY = useSharedValue(0)
 
-  // Ambient orb float
-  const orb1Y = useSharedValue(0)
-  const orb2Y = useSharedValue(0)
+    useEffect(() => {
+        // Header slides down
+        headerY.value = withSpring(0, { damping: 16, stiffness: 120 })
+        headerOpacity.value = withTiming(1, { duration: 500 })
 
-  useEffect(() => {
-    logoScale.value    = withSpring(1, { damping: 14, stiffness: 120 })
-    logoOpacity.value  = withTiming(1, { duration: 500 })
+        // Hero
+        heroScale.value = withDelay(180, withSpring(1, { damping: 14, stiffness: 100 }))
+        heroOpacity.value = withDelay(180, withTiming(1, { duration: 550 }))
 
-    titleY.value       = withDelay(250, withTiming(0, { duration: 600, easing: Easing.out(Easing.cubic) }))
-    titleOpacity.value = withDelay(250, withTiming(1, { duration: 600 }))
+        // Features
+        featuresY.value = withDelay(380, withSpring(0, { damping: 16, stiffness: 110 }))
+        featuresOpacity.value = withDelay(380, withTiming(1, { duration: 480 }))
 
-    taglineOpacity.value = withDelay(450, withTiming(1, { duration: 600 }))
-    btnOpacity.value     = withDelay(750, withTiming(1, { duration: 500 }))
+        // Footer
+        footerOpacity.value = withDelay(550, withTiming(1, { duration: 500 }))
 
-    // Gentle floating orbs
-    orb1Y.value = withRepeat(
-      withSequence(
-        withTiming(-20, { duration: 3200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0,   { duration: 3200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1, true
+        // Floating orbs
+        orbOneY.value = withRepeat(
+            withSequence(
+                withTiming(-16, { duration: 3400, easing: Easing.inOut(Easing.sin) }),
+                withTiming(0, { duration: 3400, easing: Easing.inOut(Easing.sin) })
+            ), -1, true
+        )
+        orbTwoY.value = withRepeat(
+            withSequence(
+                withTiming(14, { duration: 2800, easing: Easing.inOut(Easing.sin) }),
+                withTiming(0, { duration: 2800, easing: Easing.inOut(Easing.sin) })
+            ), -1, true
+        )
+    }, [])
+
+    const headerStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: headerY.value }],
+        opacity: headerOpacity.value,
+    }))
+    const heroStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: heroScale.value }],
+        opacity: heroOpacity.value,
+    }))
+    const featuresStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: featuresY.value }],
+        opacity: featuresOpacity.value,
+    }))
+    const footerStyle = useAnimatedStyle(() => ({ opacity: footerOpacity.value }))
+    const orbOneStyle = useAnimatedStyle(() => ({ transform: [{ translateY: orbOneY.value }] }))
+    const orbTwoStyle = useAnimatedStyle(() => ({ transform: [{ translateY: orbTwoY.value }] }))
+
+    return (
+        <View style={s.root}>
+            {/* Background gradient */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={[BG, '#0b1414', '#081010', BG]}
+                locations={[0, 0.3, 0.6, 1]}
+                style={StyleSheet.absoluteFillObject}
+            />
+
+            {/* Floating decorative orbs */}
+            <Animated.View pointerEvents="none" style={[s.orbOne, orbOneStyle]} />
+            <Animated.View pointerEvents="none" style={[s.orbTwo, orbTwoStyle]} />
+
+            {/* ── Rounded header bar ── */}
+            <Animated.View style={[s.headerOuter, { marginTop: insets.top + 10 }, headerStyle]}>
+                <View style={s.headerBar}>
+                    {/* Left — logo + name */}
+                    <View style={s.headerLeft}>
+                        <LinearGradient
+                            colors={[adjustBrightness(ACCENT, 20), ACCENT]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={s.headerLogo}
+                        >
+                            <Text style={s.headerLogoText}>{APP_NAME.charAt(0)}</Text>
+                        </LinearGradient>
+                        <Text style={s.headerAppName}>{APP_NAME}</Text>
+                    </View>
+
+                    {/* Right — Get Started button */}
+                    <Pressable
+                        onPress={() => router.push('/(auth)/login')}
+                        style={({ pressed }) => [s.headerCta, pressed && { opacity: 0.82, transform: [{ scale: 0.97 }] }]}
+                    >
+                        <LinearGradient
+                            colors={[ACCENT, adjustBrightness(ACCENT, -18)]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={s.headerCtaGrad}
+                        >
+                            <Text style={s.headerCtaText}>Get Started</Text>
+                        </LinearGradient>
+                    </Pressable>
+                </View>
+            </Animated.View>
+
+            {/* ── Hero section ── */}
+            <Animated.View style={[s.heroWrap, heroStyle]}>
+                <Text style={s.heroTitle}>{APP_NAME}</Text>
+                <Text style={s.heroTagline}>{APP_TAGLINE}</Text>
+                <Text style={s.heroDesc}>{APP_DESCRIPTION}</Text>
+            </Animated.View>
+
+            {/* ── Feature highlights ── */}
+            <Animated.View style={[s.featuresWrap, featuresStyle]}>
+                {FEATURES.map((feat, i) => (
+                    <View key={i} style={s.featureRow}>
+                        <View style={s.featureIconWrap}>
+                            <Ionicons name={feat.icon} size={18} color={ACCENT} />
+                        </View>
+                        <View style={s.featureTextWrap}>
+                            <Text style={s.featureTitle}>{feat.title}</Text>
+                            <Text style={s.featureDesc}>{feat.desc}</Text>
+                        </View>
+                    </View>
+                ))}
+            </Animated.View>
+
+            {/* ── Footer ── */}
+            <Animated.View style={[s.footer, footerStyle, { paddingBottom: insets.bottom + 20 }]}>
+                <Pressable
+                    onPress={() => router.push('/(auth)/login')}
+                    hitSlop={8}
+                    style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                >
+                    <Text style={s.signInText}>Already have an account? <Text style={s.signInLink}>Sign in</Text></Text>
+                </Pressable>
+
+                <Text style={s.legal}>
+                    By continuing you agree to our{' '}
+                    <Text onPress={() => router.push('/terms')} style={s.legalLink}>Terms</Text>
+                    {' '}and{' '}
+                    <Text onPress={() => router.push('/privacy')} style={s.legalLink}>Privacy Policy</Text>
+                </Text>
+            </Animated.View>
+        </View>
     )
-    orb2Y.value = withRepeat(
-      withSequence(
-        withTiming(16, { duration: 2800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0,  { duration: 2800, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1, true
-    )
-  }, [])
-
-  const logoStyle    = useAnimatedStyle(() => ({ transform: [{ scale: logoScale.value }], opacity: logoOpacity.value }))
-  const titleStyle   = useAnimatedStyle(() => ({ transform: [{ translateY: titleY.value }], opacity: titleOpacity.value }))
-  const taglineStyle = useAnimatedStyle(() => ({ opacity: taglineOpacity.value }))
-  const btnStyle     = useAnimatedStyle(() => ({ opacity: btnOpacity.value }))
-  const orb1Style    = useAnimatedStyle(() => ({ transform: [{ translateY: orb1Y.value }] }))
-  const orb2Style    = useAnimatedStyle(() => ({ transform: [{ translateY: orb2Y.value }] }))
-
-  return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
-      {/* Ambient orbs */}
-      <Animated.View style={[s.orb1, orb1Style]} />
-      <Animated.View style={[s.orb2, orb2Style]} />
-
-      {/* Main content */}
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-        {/* App icon / logo */}
-        <Animated.View style={[logoStyle, { marginBottom: 40 }]}>
-          <View style={[s.iconContainer, { backgroundColor: ACCENT_DIM, borderColor: `${ACCENT}44` }]}>
-            {/* TODO: Replace with your app icon <Image source={require('../assets/icon.png')} ... /> */}
-            <Text style={{ fontSize: 40 }}>✦</Text>
-          </View>
-        </Animated.View>
-
-        {/* App name */}
-        <Animated.View style={[titleStyle, { alignItems: 'center' }]}>
-          <Text style={s.appName}>
-            {/* 🎨 BRAND: Change "MyApp" to your app name */}
-            MyApp
-          </Text>
-        </Animated.View>
-
-        {/* Tagline */}
-        <Animated.View style={[taglineStyle, { alignItems: 'center', marginTop: 12 }]}>
-          <Text style={s.tagline}>
-            {/* 🎨 BRAND: Change this to your tagline */}
-            Your app tagline here.{'\n'}Make it compelling.
-          </Text>
-        </Animated.View>
-      </View>
-
-      {/* Bottom CTA */}
-      <Animated.View style={[btnStyle, { paddingHorizontal: 24, paddingBottom: insets.bottom + 32, gap: 12 }]}>
-        <Pressable
-          onPress={() => router.push('/(auth)/login')}
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, borderRadius: 16, overflow: 'hidden' })}
-        >
-          <LinearGradient
-            colors={[ACCENT, adjustBrightness(ACCENT, -25)]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={s.primaryBtn}
-          >
-            <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: 0.2 }}>
-              Get Started  →
-            </Text>
-          </LinearGradient>
-        </Pressable>
-
-        <Text style={s.legal}>
-          By continuing you agree to our{' '}
-          <Text onPress={() => router.push('/terms')}   style={s.legalLink}>Terms</Text>
-          {' '}and{' '}
-          <Text onPress={() => router.push('/privacy')} style={s.legalLink}>Privacy Policy</Text>
-        </Text>
-      </Animated.View>
-    </View>
-  )
 }
 
-function adjustBrightness(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r   = Math.max(0, Math.min(255, (num >> 16) + amount))
-  const g   = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amount))
-  const b   = Math.max(0, Math.min(255, (num & 0xff) + amount))
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
-}
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  orb1: {
-    position: 'absolute', top: SH * 0.1, right: -80,
-    width: 280, height: 280, borderRadius: 140,
-    backgroundColor: `${ACCENT}12`,
-  },
-  orb2: {
-    position: 'absolute', bottom: SH * 0.2, left: -100,
-    width: 240, height: 240, borderRadius: 120,
-    backgroundColor: `${ACCENT}08`,
-  },
-  iconContainer: {
-    width: 100, height: 100, borderRadius: 28,
-    borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  appName: {
-    fontSize: 52, fontWeight: '900', color: '#ffffff',
-    letterSpacing: -2, lineHeight: 56, textAlign: 'center',
-  },
-  tagline: {
-    fontSize: 17, fontWeight: '400', color: 'rgba(255,255,255,0.45)',
-    textAlign: 'center', lineHeight: 26, maxWidth: 280,
-  },
-  primaryBtn: {
-    height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
-  },
-  legal: { fontSize: 11, color: 'rgba(255,255,255,0.2)', textAlign: 'center', lineHeight: 17 },
-  legalLink: { color: 'rgba(255,255,255,0.4)', textDecorationLine: 'underline' },
+    root: {
+        flex: 1,
+        backgroundColor: BG,
+    },
+
+    // Floating orbs
+    orbOne: {
+        position: 'absolute',
+        right: -SW * 0.25,
+        top: SH * 0.06,
+        width: SW * 0.72,
+        height: SW * 0.72,
+        borderRadius: 999,
+        backgroundColor: `${ACCENT}14`,
+    },
+    orbTwo: {
+        position: 'absolute',
+        left: -SW * 0.32,
+        bottom: SH * 0.18,
+        width: SW * 0.66,
+        height: SW * 0.66,
+        borderRadius: 999,
+        backgroundColor: `${ACCENT}0C`,
+    },
+
+    // ── Rounded header bar ──
+    headerOuter: {
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    headerBar: {
+        width: '95%',
+        height: 58,
+        borderRadius: 999,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: BORDER,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: 6,
+        paddingRight: 6,
+    },
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    headerLogo: {
+        width: 36,
+        height: 36,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerLogoText: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    headerAppName: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+        letterSpacing: 0.1,
+    },
+    headerCta: {
+        borderRadius: 999,
+        overflow: 'hidden',
+    },
+    headerCtaGrad: {
+        paddingHorizontal: 18,
+        paddingVertical: 9,
+        borderRadius: 999,
+    },
+    headerCtaText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
+        letterSpacing: 0.2,
+    },
+
+    // Hero
+    heroWrap: {
+        paddingHorizontal: 24,
+        paddingTop: 36,
+        gap: 10,
+    },
+    iconOuter: {
+        width: 64,
+        height: 64,
+        borderRadius: 20,
+        overflow: 'hidden',
+        marginBottom: 6,
+        shadowColor: ACCENT,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 14,
+        elevation: 8,
+    },
+    iconGradient: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    iconLetter: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    heroTitle: {
+        color: '#fff',
+        fontSize: 34,
+        fontWeight: '800',
+        letterSpacing: -0.8,
+        lineHeight: 40,
+    },
+    heroTagline: {
+        color: ACCENT,
+        fontSize: 15,
+        fontWeight: '600',
+        letterSpacing: 0.1,
+    },
+    heroDesc: {
+        color: 'rgba(255,255,255,0.48)',
+        fontSize: 14,
+        lineHeight: 21,
+        maxWidth: 320,
+        marginTop: 2,
+    },
+
+    // Features
+    featuresWrap: {
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+        gap: 14,
+    },
+    featureRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: BORDER,
+        borderRadius: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+    },
+    featureIconWrap: {
+        width: 38,
+        height: 38,
+        borderRadius: 11,
+        backgroundColor: ACCENT_DIM,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    featureTextWrap: {
+        flex: 1,
+        gap: 2,
+    },
+    featureTitle: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    featureDesc: {
+        color: 'rgba(255,255,255,0.42)',
+        fontSize: 12.5,
+    },
+
+    // Footer
+    footer: {
+        paddingHorizontal: 20,
+        gap: 10,
+        alignItems: 'center',
+    },
+    signInText: {
+        color: 'rgba(255,255,255,0.35)',
+        fontSize: 13,
+    },
+    signInLink: {
+        color: ACCENT,
+        fontWeight: '600',
+    },
+    legal: {
+        color: 'rgba(255,255,255,0.22)',
+        textAlign: 'center',
+        fontSize: 11,
+        lineHeight: 17,
+        paddingHorizontal: 8,
+    },
+    legalLink: {
+        color: 'rgba(255,255,255,0.38)',
+        textDecorationLine: 'underline',
+    },
 })

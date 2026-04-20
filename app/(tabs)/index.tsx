@@ -1,114 +1,171 @@
-/**
- * Home tab — replace this placeholder with your app's main content.
- *
- * Common patterns to build here:
- *   - Feed / list of items from Supabase
- *   - Dashboard with stats
- *   - Search + filter interface
- *   - Map view
- *   - Camera / scanner
- *
- * Data fetching pattern (Supabase):
- *   const [items, setItems] = useState([])
- *   useEffect(() => {
- *     supabase.from('items').select('*').then(({ data }) => setItems(data ?? []))
- *   }, [])
- */
-import { useEffect, useState } from 'react'
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native'
+import { useMemo, useState } from 'react'
+import { View, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native'
+import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useQueryClient } from '@tanstack/react-query'
+import { Ionicons } from '@expo/vector-icons'
 import { Text } from '@/components/ui/Text'
 import { Card } from '@/components/ui/Card'
-import { supabase } from '@/lib/supabase'
-import { ACCENT, BG, TEXT_SECONDARY, TEXT_TERTIARY } from '@/lib/theme'
+import StatusBadge from '@/components/ui/StatusBadge'
+import {
+    ACCENT,
+    ACCENT_DIM,
+    BG,
+    TEXT_SECONDARY,
+    TEXT_TERTIARY,
+} from '@/lib/theme'
 import { TAB_BAR_CLEARANCE } from '@/components/TabBar'
+import { insightCards, statusLabel } from '@/lib/mockData'
+import { useItems } from '@/hooks/useItems'
+import { useActivityFeed } from '@/hooks/useActivityFeed'
+import { useProfile } from '@/hooks/useProfile'
 
 export default function HomeScreen() {
-  const insets = useSafeAreaInsets()
+    const insets = useSafeAreaInsets()
+    const [refreshing, setRefreshing] = useState(false)
+    const queryClient = useQueryClient()
 
-  const [userName,    setUserName]    = useState('')
-  const [isPremium,   setIsPremium]   = useState(false)
-  const [refreshing,  setRefreshing]  = useState(false)
+    const { data: items = [] } = useItems()
+    const { data: activityItems = [] } = useActivityFeed()
+    const { data: profile } = useProfile()
 
-  useEffect(() => {
-    loadUser()
-  }, [])
+    const greeting = (() => {
+        const h = new Date().getHours()
+        if (h < 12) return 'Good morning'
+        if (h < 17) return 'Good afternoon'
+        return 'Good evening'
+    })()
 
-  async function loadUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUserName(user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'there')
+    const topItems = useMemo(() => items.slice(0, 3), [items])
+    const latestActivity = useMemo(() => activityItems.slice(0, 3), [activityItems])
+
+    const onRefresh = async () => {
+        setRefreshing(true)
+        await queryClient.invalidateQueries({ queryKey: ['items'] })
+        await queryClient.invalidateQueries({ queryKey: ['activity'] })
+        setRefreshing(false)
     }
-  }
 
-  const greeting = (() => {
-    const h = new Date().getHours()
-    if (h < 12) return 'Good morning'
-    if (h < 17) return 'Good afternoon'
-    return 'Good evening'
-  })()
+    return (
+        <ScrollView
+            style={{ flex: 1, backgroundColor: BG }}
+            contentContainerStyle={[s.container, { paddingTop: insets.top + 16, paddingBottom: TAB_BAR_CLEARANCE + 16 }]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
+            showsVerticalScrollIndicator={false}
+        >
+            <View style={s.header}>
+                <Text style={s.greeting}>{greeting}, {(profile?.fullName ?? '').split(' ')[0]}</Text>
+                <Text style={s.subGreeting}>Here's your latest overview.</Text>
+            </View>
 
-  const onRefresh = async () => {
-    setRefreshing(true)
-    await loadUser()
-    // TODO: re-fetch your data here
-    setRefreshing(false)
-  }
+            <Text style={s.sectionTitle}>Quick Stats</Text>
+            <View style={s.cardGrid}>
+                {insightCards.map((insight) => (
+                    <Card key={insight.id} style={s.metricCard}>
+                        <Text style={s.metricLabel}>{insight.label}</Text>
+                        <Text style={s.metricValue}>{insight.value}</Text>
+                        <Text style={s.metricDelta}>{insight.delta}</Text>
+                    </Card>
+                ))}
+            </View>
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: BG }}
-      contentContainerStyle={[s.container, { paddingTop: insets.top + 16, paddingBottom: TAB_BAR_CLEARANCE + 16 }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Greeting header */}
-      <View style={s.header}>
-        <Text style={s.greeting}>{greeting}{userName ? `, ${userName}` : ''}!</Text>
-        <Text style={s.subGreeting}>
-          {/* 🎨 BRAND: Change this subtitle */}
-          Welcome to your app.
-        </Text>
-      </View>
+            <Text style={s.sectionTitle}>Recent Items</Text>
+            {topItems.map((item) => (
+                <Pressable
+                    key={item.id}
+                    onPress={() => router.push(`/detail/${item.id}`)}
+                    style={({ pressed }) => [pressed && { opacity: 0.75 }]}
+                >
+                    <Card style={s.itemCard}>
+                        <View style={s.itemTop}>
+                            <View style={s.itemTitleWrap}>
+                                <Text style={s.cardTitle}>{item.name}</Text>
+                                <Text style={s.cardSub}>{item.owner} | Updated {item.updatedAt}</Text>
+                            </View>
+                            <StatusBadge status={item.status} label={statusLabel(item.status)} />
+                        </View>
 
-      {/* ── Placeholder content ─────────────────────────────────────────────── */}
-      {/* TODO: Replace the cards below with your actual app content */}
+                        <Text style={[s.cardSub, { marginTop: 8 }]}>{item.summary}</Text>
 
-      <Text style={s.sectionTitle}>Quick Actions</Text>
-      <View style={s.cardGrid}>
-        <Card style={s.halfCard}>
-          <Text style={{ fontSize: 28 }}>📊</Text>
-          <Text style={s.cardTitle}>Analytics</Text>
-          <Text style={s.cardSub}>View your stats</Text>
-        </Card>
-        <Card style={s.halfCard}>
-          <Text style={{ fontSize: 28 }}>⚡</Text>
-          <Text style={s.cardTitle}>Activity</Text>
-          <Text style={s.cardSub}>Recent events</Text>
-        </Card>
-      </View>
+                        <View style={s.itemMeta}>
+                            <Text style={s.metaValue}>{item.completion}% complete</Text>
+                            <Text style={s.metaValue}>Health {item.health}</Text>
+                            <Text style={s.metaValue}>{item.activeUsers} active</Text>
+                        </View>
+                    </Card>
+                </Pressable>
+            ))}
 
-      <Text style={s.sectionTitle}>Getting Started</Text>
-      <Card>
-        <Text style={s.cardTitle}>Build your first feature</Text>
-        <Text style={[s.cardSub, { marginTop: 6, lineHeight: 20 }]}>
-          This is the home tab. Add your app-specific content here.{'\n'}
-          Pull to refresh, add lists, charts, or whatever your app needs.
-        </Text>
-      </Card>
+            <Text style={s.sectionTitle}>Recent Activity</Text>
+            <Card style={s.activityCard}>
+                {latestActivity.map((activity, index) => (
+                    <View key={activity.id} style={[s.activityRow, index < latestActivity.length - 1 && s.activityDivider]}>
+                        <View style={s.activityIconWrap}>
+                            <Ionicons name={activityIcon(activity.kind)} size={14} color={ACCENT} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={s.activityTitle}>{activity.title}</Text>
+                            <Text style={s.cardSub}>{activity.detail}</Text>
+                        </View>
+                        <Text style={s.activityTime}>{activity.timeAgo}</Text>
+                    </View>
+                ))}
+            </Card>
+        </ScrollView>
+    )
+}
 
-    </ScrollView>
-  )
+function activityIcon(kind: 'milestone' | 'comment' | 'alert' | 'review') {
+    switch (kind) {
+        case 'milestone':
+            return 'flag-outline'
+        case 'comment':
+            return 'chatbubble-ellipses-outline'
+        case 'alert':
+            return 'alert-circle-outline'
+        case 'review':
+            return 'checkmark-done-outline'
+        default:
+            return 'ellipse-outline'
+    }
 }
 
 const s = StyleSheet.create({
-  container:   { paddingHorizontal: 20, gap: 16 },
-  header:      { gap: 4, marginBottom: 8 },
-  greeting:    { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  subGreeting: { fontSize: 14, color: TEXT_SECONDARY },
-  sectionTitle:{ fontSize: 13, fontWeight: '700', color: TEXT_TERTIARY, letterSpacing: 0.5, textTransform: 'uppercase' },
-  cardGrid:    { flexDirection: 'row', gap: 12 },
-  halfCard:    { flex: 1, gap: 6 },
-  cardTitle:   { fontSize: 15, fontWeight: '700', color: '#fff', marginTop: 4 },
-  cardSub:     { fontSize: 13, color: TEXT_SECONDARY },
+    container: { paddingHorizontal: 20, gap: 14 },
+    header: { gap: 4, marginBottom: 4 },
+    greeting: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.6 },
+    subGreeting: { fontSize: 14, color: TEXT_SECONDARY },
+    sectionTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: TEXT_TERTIARY,
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
+        marginTop: 4,
+    },
+    cardGrid: { flexDirection: 'row', gap: 10 },
+    metricCard: { flex: 1, gap: 3, paddingVertical: 12, paddingHorizontal: 12 },
+    metricLabel: { fontSize: 11, color: TEXT_TERTIARY, fontWeight: '600' },
+    metricValue: { fontSize: 17, color: '#fff', fontWeight: '700', letterSpacing: -0.2 },
+    metricDelta: { fontSize: 11, color: ACCENT },
+    itemCard: { gap: 2, paddingVertical: 14 },
+    itemTop: { flexDirection: 'row', gap: 10 },
+    itemTitleWrap: { flex: 1, gap: 3 },
+    cardTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
+    cardSub: { fontSize: 12, color: TEXT_SECONDARY, lineHeight: 18 },
+    itemMeta: { flexDirection: 'row', gap: 12, marginTop: 10, flexWrap: 'wrap' },
+    metaValue: { fontSize: 11, color: TEXT_TERTIARY },
+    activityCard: { paddingVertical: 4, paddingHorizontal: 0 },
+    activityRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+    activityDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' },
+    activityIconWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: ACCENT_DIM,
+    },
+    activityTitle: { fontSize: 13.5, color: '#fff', fontWeight: '600', marginBottom: 1 },
+    activityTime: { fontSize: 11, color: TEXT_TERTIARY },
 })

@@ -7,7 +7,7 @@
  * the screens registered here.
  */
 import { Tabs } from 'expo-router'
-import { House, CircleUser } from 'lucide-react-native'
+import { House, Compass, Bell, CircleUser } from 'lucide-react-native'
 import TabBar, { TAB_BAR_HEIGHT } from '@/components/TabBar'
 import { BG } from '@/lib/theme'
 
@@ -17,7 +17,7 @@ export default function TabsLayout() {
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: BG },
+        sceneStyle: { backgroundColor: BG },
         // Extra bottom padding so content clears the floating tab bar
         tabBarStyle: { height: TAB_BAR_HEIGHT },
       }}
@@ -32,19 +32,25 @@ export default function TabsLayout() {
         }}
       />
 
-      {/*
-        TODO: Add more tabs here. Example:
+      <Tabs.Screen
+        name="explore"
+        options={{
+          tabBarLabel: 'Explore',
+          tabBarIcon: ({ color, size }) => (
+            <Compass size={size} color={color} strokeWidth={1.6} />
+          ),
+        }}
+      />
 
-        <Tabs.Screen
-          name="explore"
-          options={{
-            tabBarLabel: 'Explore',
-            tabBarIcon: ({ color, size }) => (
-              <Compass size={size} color={color} strokeWidth={1.6} />
-            ),
-          }}
-        />
-      */}
+      <Tabs.Screen
+        name="activity"
+        options={{
+          tabBarLabel: 'Activity',
+          tabBarIcon: ({ color, size }) => (
+            <Bell size={size} color={color} strokeWidth={1.6} />
+          ),
+        }}
+      />
 
       <Tabs.Screen
         name="profile"

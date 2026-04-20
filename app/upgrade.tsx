@@ -27,6 +27,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext'
 import { PurchasesPackage } from 'react-native-purchases'
 import Purchases from 'react-native-purchases'
 import { track } from '@/lib/analytics'
+import { adjustBrightness } from '@/lib/utils'
 import * as Haptics from 'expo-haptics'
 import { ACCENT, ACCENT_DIM, ACCENT_BORDER, BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY } from '@/lib/theme'
 
@@ -368,14 +369,6 @@ export default function UpgradeScreen() {
       />
     </View>
   )
-}
-
-function adjustBrightness(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.max(0, Math.min(255, (num >> 16) + amount))
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amount))
-  const b = Math.max(0, Math.min(255, (num & 0xff) + amount))
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
 }
 
 const RADIUS = 20

@@ -1,34 +1,46 @@
 import React, { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, Platform } from 'react-native'
-import { Stack, useNavigationContainerRef } from 'expo-router'
+import { View, StyleSheet, Platform, DeviceEventEmitter } from 'react-native'
+import { Stack, useNavigationContainerRef, usePathname } from 'expo-router'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/queryClient'
 import * as Sentry from '@sentry/react-native'
 
 const routingInstrumentation = Sentry.reactNavigationIntegration()
 
 Sentry.init({
-  dsn:         process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
   environment: __DEV__ ? 'development' : 'production',
-  enabled:     !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
-  integrations:[routingInstrumentation],
+  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  integrations: [routingInstrumentation],
   tracesSampleRate: 0,
 })
 
-import { GestureHandlerRootView }   from 'react-native-gesture-handler'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet'
-import { SafeAreaProvider }         from 'react-native-safe-area-context'
-import { StatusBar }                from 'expo-status-bar'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { StatusBar } from 'expo-status-bar'
+import { useFonts } from 'expo-font'
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+} from '@expo-google-fonts/inter'
 import { ThemeProvider, DarkTheme } from '@react-navigation/native'
-import { PostHogProvider }          from 'posthog-react-native'
-import { I18nextProvider }          from 'react-i18next'
+import { PostHogProvider } from 'posthog-react-native'
+import { I18nextProvider } from 'react-i18next'
 
-import { supabase }                                            from '@/lib/supabase'
-import { posthog, identify, resetIdentity }                    from '@/lib/analytics'
+import { supabase, isSupabaseEnabled } from '@/lib/supabase'
+import { posthog, isPostHogEnabled, identify, resetIdentity, track } from '@/lib/analytics'
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from '@/lib/purchases'
-import { SubscriptionProvider }                                from '@/contexts/SubscriptionContext'
-import i18n, { initI18n }                                      from '@/lib/i18n'
-import OfflineBanner                                           from '@/components/OfflineBanner'
-import OfflineOverlay                                          from '@/components/OfflineOverlay'
-import { BG }                                                  from '@/lib/theme'
+import { SubscriptionProvider } from '@/contexts/SubscriptionContext'
+import { ToastProvider } from '@/contexts/ToastContext'
+import i18n, { initI18n } from '@/lib/i18n'
+import OfflineBanner from '@/components/OfflineBanner'
+import OfflineOverlay from '@/components/OfflineOverlay'
+import { Text } from '@/components/ui/Text'
+import { BG } from '@/lib/theme'
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 // React requires a class component to catch render errors — hooks cannot do this.
@@ -68,8 +80,8 @@ const eb = StyleSheet.create({
     flex: 1, backgroundColor: BG,
     alignItems: 'center', justifyContent: 'center', padding: 32,
   },
-  title:    { color: '#fff',                    fontSize: 18, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
-  subtitle: { color: 'rgba(255,255,255,0.4)',   fontSize: 14, textAlign: 'center', lineHeight: 22 },
+  title: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  subtitle: { color: 'rgba(255,255,255,0.4)', fontSize: 14, textAlign: 'center', lineHeight: 22 },
 })
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -79,16 +91,45 @@ const customDarkTheme = {
   colors: { ...DarkTheme.colors, background: BG },
 }
 
+// ─── Conditional PostHog provider ─────────────────────────────────────────────
+// PostHogProvider requires a valid client instance. When the API key is missing
+// we skip the provider entirely so no errors are thrown.
+
+function MaybePostHogProvider({ children }: { children: React.ReactNode }) {
+  if (isPostHogEnabled && posthog) {
+    return <PostHogProvider client={posthog}>{children}</PostHogProvider>
+  }
+  return <>{children}</>
+}
+
+// ─── Screen tracking ─────────────────────────────────────────────────────────
+// Rendered inside the navigator so usePathname has routing context.
+
+function ScreenTracker() {
+  const pathname = usePathname()
+  useEffect(() => {
+    track('screen_viewed', { screen: pathname })
+  }, [pathname])
+  return null
+}
+
 // ─── Root layout ──────────────────────────────────────────────────────────────
 
 function RootLayout() {
   const navigationRef = useNavigationContainerRef()
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  })
 
   // null = still checking; true/false = auth state known
-  const [isAuthed,           setIsAuthed]           = useState<boolean | null>(null)
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null)
   // null = loading; false = not completed; true = completed
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
-  const [i18nReady,          setI18nReady]           = useState(false)
+  const [i18nReady, setI18nReady] = useState(false)
 
   useEffect(() => {
     initI18n().then(() => setI18nReady(true))
@@ -104,15 +145,27 @@ function RootLayout() {
     // Configure RevenueCat once at startup, before any user is known
     configureRevenueCat()
 
+    if (!isSupabaseEnabled) {
+      // No credentials — stay on landing page, no errors thrown
+      setIsAuthed(false)
+      return
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthed(!!session)
       if (session?.user) {
         setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
         loginRevenueCat(session.user.id)
-        identify(session.user.id, { email: session.user.email })
+        identify(
+          session.user.id,
+          session.user.email ? { email: session.user.email } : undefined
+        )
       } else {
         setOnboardingCompleted(null)
       }
+    }).catch(() => {
+      console.warn('[Auth] Could not reach Supabase — defaulting to signed-out state.')
+      setIsAuthed(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -120,7 +173,10 @@ function RootLayout() {
         setIsAuthed(true)
         setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
         loginRevenueCat(session.user.id)
-        identify(session.user.id, { email: session.user.email })
+        identify(
+          session.user.id,
+          session.user.email ? { email: session.user.email } : undefined
+        )
       }
       if (event === 'SIGNED_OUT') {
         setIsAuthed(false)
@@ -131,7 +187,6 @@ function RootLayout() {
       if (event === 'USER_UPDATED' && session?.user) {
         setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
       }
-      // TOKEN_REFRESHED fires when refreshSession() is called
       if (event === 'TOKEN_REFRESHED' && session?.user) {
         setOnboardingCompleted(session.user.user_metadata?.onboarding_completed === true)
       }
@@ -140,17 +195,28 @@ function RootLayout() {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!__DEV__) return
+    const sub = DeviceEventEmitter.addListener('__dev_skip_auth__', () => {
+      setIsAuthed(true)
+      setOnboardingCompleted(true)
+    })
+    return () => sub.remove()
+  }, [])
+
   // Show blank dark screen while session + i18n checks complete.
   // This prevents a flash of wrong content on launch.
-  if (isAuthed === null || !i18nReady || (isAuthed === true && onboardingCompleted === null)) {
+  if (!fontsLoaded || isAuthed === null || !i18nReady || (isAuthed === true && onboardingCompleted === null)) {
     return <View style={{ flex: 1, backgroundColor: BG }} />
   }
 
   return (
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
-        <PostHogProvider client={posthog}>
+        <MaybePostHogProvider>
+          <QueryClientProvider client={queryClient}>
           <SubscriptionProvider>
+            <ToastProvider>
             <SafeAreaProvider>
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: BG }}>
                 <BottomSheetModalProvider>
@@ -182,7 +248,9 @@ function RootLayout() {
                         Accessible only when signed in + onboarding done. */}
                         <Stack.Protected guard={!!isAuthed && onboardingCompleted === true}>
                           <Stack.Screen name="(tabs)" />
-                          {/* TODO: Add more authenticated screens here */}
+                          <Stack.Screen name="detail/[id]" />
+                          <Stack.Screen name="settings" />
+                          <Stack.Screen name="support" />
                         </Stack.Protected>
 
                         {/* ── Always-public screens — declared LAST so they don't become
@@ -191,6 +259,7 @@ function RootLayout() {
                         <Stack.Screen name="privacy" />
                         <Stack.Screen name="terms" />
                       </Stack>
+                      <ScreenTracker />
                       <OfflineBanner />
                       <OfflineOverlay />
                     </View>
@@ -198,8 +267,10 @@ function RootLayout() {
                 </BottomSheetModalProvider>
               </GestureHandlerRootView>
             </SafeAreaProvider>
+            </ToastProvider>
           </SubscriptionProvider>
-        </PostHogProvider>
+          </QueryClientProvider>
+        </MaybePostHogProvider>
       </I18nextProvider>
     </ErrorBoundary>
   )
