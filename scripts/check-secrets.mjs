@@ -521,7 +521,10 @@ export function run({ mode, paths = [] }) {
 	const findings = []
 	for (const [path, text] of collect(mode, paths)) {
 		if (text == null || isSkipped(path, allowlist)) continue
-		if (text.length > MAX_BYTES || isProbablyBinary(text)) continue
+		// Session transcripts are routinely over 1MB and are exactly where a
+		// credential lands, so the generated-bundle size cap does not apply to them.
+		const isTranscript = /(^|\/)\.(claude|codex)-logs\//.test(path)
+		if ((!isTranscript && text.length > MAX_BYTES) || isProbablyBinary(text)) continue
 		for (const finding of scanText(text)) findings.push({ path, ...finding })
 	}
 	return findings
