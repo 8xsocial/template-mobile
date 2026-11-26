@@ -458,6 +458,8 @@ export const ENTITLEMENT_ID = 'your_entitlement_name'
 
 ## Deploying Supabase to production
 
+If a pull request changes the Supabase migrations, [RattleCheck](.github/workflows/rattlecheck.yml) compares the SQL permissions with the base branch and flags new high or critical findings. Review the indicated SQL line before pushing the migrations. The check needs no database credentials.
+
 ```bash
 # Link to your remote project
 supabase link --project-ref your-project-ref
